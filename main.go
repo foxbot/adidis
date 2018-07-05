@@ -63,7 +63,6 @@ loop:
 	for {
 		select {
 		case msg := <-shard.Messages:
-			shard.Log("(sil) event", msg.Type)
 			onDispatch(msg)
 		case <-shard.Done:
 			break loop

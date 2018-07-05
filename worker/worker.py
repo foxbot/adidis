@@ -28,8 +28,55 @@ class Client:
 
 client = Client()
 
+# Cache Management
+@client.event('READY')
+def ready(data):
+    client.redis.set('discord:me', json.dumps(data['user']))
+
+@client.event('CHANNEL_CREATE')
+def channel_create(data):
+    client.redis.set('discord:channels:%s' % data['id'], json.dumps(data))
+
+@client.event('CHANNEL_UPDATE')
+def channel_update(data):
+    client.redis.set('discord:channels:%s' % data['id'], json.dumps(data))
+
+@client.event('CHANNEL_DELETE')
+def channel_delete(data):
+    client.redis.delete('discord:channels:%s' % data['id'])
+
+@client.event('GUILD_CREATE')
+def guild_create(data):
+    client.redis.set('discord:guilds:%s' % data['id'], json.dumps(data))
+    for channel in data['channels']:
+        client.redis.set('discord:channels:%s' % channel['id'], json.dumps(channel))
+
+# Commands
+me = {}
+prefix = ''
+
 @client.event('MESSAGE_CREATE')
 def message(data):
-    print("%s in %s: %s" % (data['author']['username'], data['channel_id'], data['content']))
+    channel = json.loads(client.redis.get('discord:channels:%s' % data['channel_id']))
+    print("%s in %s: %s" % (data['author']['username'], channel['name'], data['content']))
+
+@client.event('MESSAGE_CREATE')
+def command(data):
+    global me
+    global prefix
+
+    if me is None:
+        me = json.loads(client.redis.get('discord:me'))
+        prefix = '<@%s> ' % me['id']
+    content = data['content']
+
+    if not content.startswith(prefix):
+        return
+
+    command = content[len(prefix):]
+
+    if command is 'ping':
+        print('pong')
+
 
 client.run()

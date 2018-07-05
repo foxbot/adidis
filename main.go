@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
-	"time"
 
 	"github.com/foxbot/adidis/wumpus"
 )
@@ -47,52 +45,12 @@ func runShard(shard wumpus.Shard) error {
 		return err
 	}
 
-	// assume that discord will always send a HELLO (this is probably really bad)
-	msg := <-shard.Messages
-	payload := new(wumpus.Payload)
-	err = json.Unmarshal(msg, &payload)
-	if err != nil {
-		return err
-	}
-	interval := 0
-	if payload.Op != wumpus.OpHello {
-		shard.Log("(wrn) first frame was not a hello, falling back to default interval")
-		interval = 45000
-	} else {
-		hello := new(wumpus.Hello)
-		err = json.Unmarshal(payload.Data, &hello)
-		if err != nil {
-			return err
-		}
-		interval = hello.Heartbeat
-	}
-	ticker := time.NewTicker(time.Duration(interval) * time.Millisecond)
-
 loop:
 	for {
 		select {
 		case msg := <-shard.Messages:
-			payload := new(wumpus.Payload)
-			err = json.Unmarshal(msg, &payload)
-			if err != nil {
-				shard.Log("(wrn) bad json, dropping packet", err)
-				continue
-			}
-
-			switch payload.Op {
-			case wumpus.OpDispatch:
-				shard.Log("(sil) event", payload.Type)
-				onDispatch(payload, &shard.ShardID)
-
-				if payload.Type == "READY" {
-					shard.Ready(payload.Data)
-				}
-			}
-		case <-ticker.C:
-			err = shard.Send(wumpus.OpHeartbeat, nil)
-			if err != nil {
-				shard.Log("(wrn) failed to heartbeat", err)
-			}
+			shard.Log("(sil) event", msg.Type)
+			onDispatch(msg, &shard.ShardID)
 		case <-shard.Done:
 			break loop
 		}

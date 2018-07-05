@@ -54,6 +54,13 @@ type (
 		Device  string `json:"$device"`
 	}
 
+	// Resume tries to resume
+	Resume struct {
+		Token    string `json:"token"`
+		Session  string `json:"session_id"`
+		Sequence int    `json:"seq"`
+	}
+
 	// Ready is sent when a session is created
 	Ready struct {
 		SessionID string `json:"session_id"`

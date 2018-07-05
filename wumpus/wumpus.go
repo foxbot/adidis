@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"runtime"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -22,25 +23,30 @@ const (
 
 // Shard is a shard connected to Discord's gateway
 type Shard struct {
-	token      string
-	gateway    string
-	ShardID    int
-	shardTotal int
-	state      int
-	session    string
-	ws         *websocket.Conn
-	Done       chan struct{}
-	Messages   chan []byte
+	token         string
+	gateway       string
+	ShardID       int
+	shardTotal    int
+	state         int
+	session       string
+	sequence      int
+	ws            *websocket.Conn
+	heartbeatDone chan struct{}
+	Done          chan struct{}
+	Messages      chan *Payload
 }
 
 // NewShard constructs a shard
 func NewShard(token, gateway string, shardID, shardTotal int) Shard {
 	return Shard{
-		token:      token,
-		gateway:    gateway,
-		ShardID:    shardID,
-		shardTotal: shardTotal,
-		state:      stateDisconnected,
+		token:         token,
+		gateway:       gateway,
+		ShardID:       shardID,
+		shardTotal:    shardTotal,
+		state:         stateDisconnected,
+		heartbeatDone: make(chan struct{}, 1),
+		Done:          make(chan struct{}, 1),
+		Messages:      make(chan *Payload, 32),
 	}
 }
 
@@ -64,8 +70,6 @@ func (shard *Shard) Start() error {
 	q.Set("v", GatewayVersion)
 
 	shard.state = stateConnecting
-	shard.Done = make(chan struct{})
-	shard.Messages = make(chan []byte, 16)
 
 	c, _, err := websocket.DefaultDialer.Dial(url.String(), nil)
 
@@ -76,6 +80,27 @@ func (shard *Shard) Start() error {
 	shard.ws = c
 	c.SetCloseHandler(shard.disconnect)
 
+	shard.read()
+
+	if shard.session != "" {
+		err = shard.resume()
+		if err != nil {
+			shard.Stop()
+			return err
+		}
+		return nil
+	}
+
+	err = shard.identify()
+	if err != nil {
+		shard.Stop()
+		return err
+	}
+
+	return nil
+}
+
+func (shard *Shard) identify() error {
 	identify := Identify{
 		Token: shard.token,
 		Properties: Properties{
@@ -87,15 +112,18 @@ func (shard *Shard) Start() error {
 		LargeThreshold: largeThreshold,
 		Shard:          []int{shard.ShardID, shard.shardTotal},
 	}
-	err = shard.Send(OpIdentify, identify)
-	if err != nil {
-		shard.Stop()
-		return err
+	err := shard.Send(OpIdentify, identify)
+	return err
+}
+
+func (shard *Shard) resume() error {
+	resume := Resume{
+		Token:    shard.token,
+		Session:  shard.session,
+		Sequence: shard.sequence,
 	}
-
-	shard.read()
-
-	return nil
+	err := shard.Send(OpResume, resume)
+	return err
 }
 
 // Stop the shard, disconnecting any sockets
@@ -114,7 +142,15 @@ func (shard *Shard) Stop() error {
 }
 
 func (shard *Shard) disconnect(code int, text string) error {
-	shard.Log("close", code, text)
+	shard.Log("(inf) connection lost", code, text)
+
+	if code == 1000 || code == 1001 {
+		shard.sequence = 0
+		shard.session = ""
+	}
+
+	shard.heartbeatDone <- struct{}{}
+
 	shard.Stop()
 	return nil
 }
@@ -124,12 +160,63 @@ func (shard *Shard) read() {
 		for {
 			_, buf, err := shard.ws.ReadMessage()
 			if err != nil {
-				log.Println(err)
+				shard.Log("(err) socket read failed", err)
 				return
 			}
-			shard.Messages <- buf
+			payload := new(Payload)
+			err = json.Unmarshal(buf, &payload)
+			if err != nil {
+				shard.Log("(wrn) json unmarshal failed, dropping packet", err)
+				continue
+			}
+			switch payload.Op {
+			case OpDispatch:
+				shard.sequence = payload.Sequence
+				shard.Messages <- payload
+
+				if payload.Type == "READY" {
+					shard.handleReady(payload.Data)
+				}
+			case OpHello:
+				shard.handleHello(payload.Data)
+			case OpInvalidSession:
+				shard.identify()
+			}
 		}
 	}()
+}
+
+func (shard *Shard) handleHello(data []byte) {
+	hello := new(Hello)
+	err := json.Unmarshal(data, &hello)
+	if err != nil {
+		log.Panicln("couldn't unmarshal hello", err)
+	}
+
+	shard.heartbeatDone <- struct{}{}
+	close(shard.heartbeatDone)
+	shard.heartbeatDone = make(chan struct{}, 1)
+
+	ticker := time.NewTicker(time.Duration(hello.Heartbeat) * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				shard.Send(OpHeartbeat, struct{}{})
+			case <-shard.heartbeatDone:
+				ticker.Stop()
+				break
+			}
+		}
+	}()
+}
+func (shard *Shard) handleReady(data []byte) {
+	ready := new(Ready)
+	err := json.Unmarshal(data, &ready)
+	if err != nil {
+		log.Panicln("couldn't unmarshal ready", err)
+	}
+	shard.session = ready.SessionID
 }
 
 // Send a message to discord
@@ -151,16 +238,6 @@ func (shard *Shard) Send(op int, data interface{}) error {
 	shard.Log("(sil) write op", op)
 	err = shard.ws.WriteMessage(websocket.TextMessage, buf)
 	return err
-}
-
-// Ready handles the shard's READY message
-func (shard *Shard) Ready(payload []byte) {
-	ready := new(Ready)
-	err := json.Unmarshal(payload, &ready)
-	if err != nil {
-		log.Panicln("couldn't unmarshal ready", err)
-	}
-	shard.session = ready.SessionID
 }
 
 // Log a message from this shard

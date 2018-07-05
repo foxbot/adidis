@@ -1,0 +1,3 @@
+[submodule "worker/blaze"]
+	path = worker/blaze
+	url = https://github.com/yuki-bot/blaze

@@ -112,7 +112,7 @@ func (shard *Shard) identify() error {
 		LargeThreshold: largeThreshold,
 		Shard:          []int{shard.ShardID, shard.shardTotal},
 	}
-	err := shard.Send(OpIdentify, identify)
+	err := shard.Send(opIdentify, identify)
 	return err
 }
 
@@ -122,7 +122,7 @@ func (shard *Shard) resume() error {
 		Session:  shard.session,
 		Sequence: shard.sequence,
 	}
-	err := shard.Send(OpResume, resume)
+	err := shard.Send(opResume, resume)
 	return err
 }
 
@@ -170,16 +170,16 @@ func (shard *Shard) read() {
 				continue
 			}
 			switch payload.Op {
-			case OpDispatch:
+			case opDispatch:
 				shard.sequence = payload.Sequence
 				shard.Messages <- payload
 
 				if payload.Type == "READY" {
 					shard.handleReady(payload.Data)
 				}
-			case OpHello:
+			case opHello:
 				shard.handleHello(payload.Data)
-			case OpInvalidSession:
+			case opInvalidSession:
 				shard.identify()
 			}
 		}
@@ -202,7 +202,7 @@ func (shard *Shard) handleHello(data []byte) {
 		for {
 			select {
 			case <-ticker.C:
-				shard.Send(OpHeartbeat, struct{}{})
+				shard.Send(opHeartbeat, struct{}{})
 			case <-shard.heartbeatDone:
 				ticker.Stop()
 				break

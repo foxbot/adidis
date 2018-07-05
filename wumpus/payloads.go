@@ -5,23 +5,18 @@ import (
 )
 
 const (
-	// OpDispatch is for dispatch events
-	OpDispatch = 0
-	// OpHeartbeat is a heartbeat
-	OpHeartbeat = 1
-	// OpIdentify is an outgoing identify
-	OpIdentify = 2
-	// OpStatusUpdate sets the bot status
-	OpStatusUpdate     = 3
-	OpVoiceStateUpdate = 4
-	OpVoiceServerPing  = 5
-	// OpResume asks for the session to be resumed
-	OpResume              = 6
-	OpReconnect           = 7
-	OpRequestGuildMembers = 8
-	OpInvalidSession      = 9
-	OpHello               = 10
-	OpHeartbeatACK        = 11
+	opDispatch            = 0
+	opHeartbeat           = 1
+	opIdentify            = 2
+	opStatusUpdate        = 3
+	opVoiceStateUpdate    = 4
+	opVoiceServerPing     = 5
+	opResume              = 6
+	opReconnect           = 7
+	opRequestGuildMembers = 8
+	opInvalidSession      = 9
+	opHello               = 10
+	opHeartbeatACK        = 11
 )
 
 type (

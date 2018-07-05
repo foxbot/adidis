@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/foxbot/adidis/wumpus"
+	"github.com/mediocregopher/radix.v2/pool"
 )
 
 const (
@@ -17,6 +18,7 @@ var (
 	token      string
 	shardID    int
 	shardTotal int
+	redisPool  *pool.Pool
 )
 
 var eventMap = map[string]int{
@@ -33,6 +35,12 @@ func init() {
 func main() {
 	flag.Parse()
 	println("adidis")
+
+	r, err := pool.New("tcp", "127.0.0.1:6379", 10)
+	if err != nil {
+		panic(err)
+	}
+	redisPool = r
 
 	// TODO: make lots and lots of shards
 	shard := wumpus.NewShard(token, "gateway.discord.gg", 0, 1)
@@ -59,17 +67,29 @@ loop:
 	return shard.Stop()
 }
 
-func onDispatch(payload *wumpus.Payload, shardID *int) {
-	action := getAction(payload.Type)
+func onDispatch(event *wumpus.Event, shardID *int) {
+	action := getAction(event.Type)
 
 	switch action {
 	case eventDrop:
 		return
 	case eventForward:
-		// TODO: write to redis
+		forwardEvent(event)
 	case eventCache:
 		// TODO: cache in redis
 	}
+}
+
+func forwardEvent(event *wumpus.Event) error {
+	redis, err := redisPool.Get()
+	defer redisPool.Put(redis)
+
+	if err != nil {
+		return err
+	}
+
+	resp := redis.Cmd("RPUSH", "exchange:events", event.Data)
+	return resp.Err
 }
 
 func getAction(event string) int {

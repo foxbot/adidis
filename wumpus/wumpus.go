@@ -33,7 +33,7 @@ type Shard struct {
 	ws            *websocket.Conn
 	heartbeatDone chan struct{}
 	Done          chan struct{}
-	Messages      chan *Payload
+	Messages      chan *Event
 }
 
 // NewShard constructs a shard
@@ -46,7 +46,7 @@ func NewShard(token, gateway string, shardID, shardTotal int) Shard {
 		state:         stateDisconnected,
 		heartbeatDone: make(chan struct{}, 1),
 		Done:          make(chan struct{}, 1),
-		Messages:      make(chan *Payload, 32),
+		Messages:      make(chan *Event, 32),
 	}
 }
 
@@ -172,7 +172,11 @@ func (shard *Shard) read() {
 			switch payload.Op {
 			case opDispatch:
 				shard.sequence = payload.Sequence
-				shard.Messages <- payload
+				event := &Event{
+					Type: payload.Type,
+					Data: buf,
+				}
+				shard.Messages <- event
 
 				if payload.Type == "READY" {
 					shard.handleReady(payload.Data)

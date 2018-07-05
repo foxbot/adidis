@@ -28,6 +28,12 @@ type (
 		Type     string          `json:"t"`
 	}
 
+	// Event contains a raw payload, and its type
+	Event struct {
+		Type string
+		Data []byte
+	}
+
 	// Hello is sent on socket open
 	Hello struct {
 		Heartbeat int `json:"heartbeat_interval"`

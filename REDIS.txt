@@ -1,0 +1,11 @@
+redis schema
+
+discord							namespace for discord-related cache*
+discord:me						current user
+discord:guilds:(id)				guild
+discord:member:(guild):(id)		member
+
+* discord namespace wip, will be expanded as necessary
+
+exchange						namespace for exchange messages
+exchange:events					gateway events will be placed in a queue here

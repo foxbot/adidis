@@ -21,9 +21,15 @@ var (
 	redisPool  *pool.Pool
 )
 
-var eventMap = map[string]int{
-	"READY":          eventForward,
-	"MESSAGE_CREATE": eventForward,
+var greenEvents = []string{
+	"READY",
+	"MESSAGE_CREATE",
+	"GUILD_CREATE",
+	"GUILD_UPDATE",
+	"GUILD_DELETE",
+	"CHANNEL_CREATE",
+	"CHANNEL_UPDATE",
+	"CHANNEL_DELETE",
 }
 
 func init() {
@@ -58,7 +64,7 @@ loop:
 		select {
 		case msg := <-shard.Messages:
 			shard.Log("(sil) event", msg.Type)
-			onDispatch(msg, &shard.ShardID)
+			onDispatch(msg)
 		case <-shard.Done:
 			break loop
 		}
@@ -67,17 +73,13 @@ loop:
 	return shard.Stop()
 }
 
-func onDispatch(event *wumpus.Event, shardID *int) {
-	action := getAction(event.Type)
+func onDispatch(event *wumpus.Event) {
+	greenlit := isGreenlit(event.Type)
 
-	switch action {
-	case eventDrop:
+	if !greenlit {
 		return
-	case eventForward:
-		forwardEvent(event)
-	case eventCache:
-		// TODO: cache in redis
 	}
+	forwardEvent(event)
 }
 
 func forwardEvent(event *wumpus.Event) error {
@@ -92,10 +94,11 @@ func forwardEvent(event *wumpus.Event) error {
 	return resp.Err
 }
 
-func getAction(event string) int {
-	action, ok := eventMap[event]
-	if ok {
-		return action
+func isGreenlit(event string) bool {
+	for _, ev := range greenEvents {
+		if event == ev {
+			return true
+		}
 	}
-	return eventDrop
+	return false
 }

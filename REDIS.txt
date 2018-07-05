@@ -2,6 +2,7 @@ redis schema
 
 discord							namespace for discord-related cache*
 discord:me						current user
+discord:channels:(id)			channel
 discord:guilds:(id)				guild
 discord:member:(guild):(id)		member
 

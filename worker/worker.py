@@ -1,15 +1,25 @@
+from discord.http import HTTPClient, Route
+
+import asyncio
 import json
 import redis
+import sys
+
+# Set this to blaze URL
+Route.BASE = "http://localhost:15001"
 
 class Client:
     def __init__(self):
         self.handlers = {}
         self.redis = redis.StrictRedis()
 
-    def call(self, type, data):
+    async def call(self, type, data):
         if type in self.handlers:
             for h in self.handlers[type]:
-                h(data)
+                if asyncio.iscoroutinefunction(h):
+                    await h(data)
+                else:
+                    h(data)
 
     def event(self, type):
         def registerhandler(handler):
@@ -20,11 +30,11 @@ class Client:
             return handler
         return registerhandler
 
-    def run(self):
+    async def run(self):
         while True:
             _, raw = self.redis.blpop('exchange:events')
             ev = json.loads(raw)
-            self.call(ev['t'], ev['d'])
+            await self.call(ev['t'], ev['d'])
 
 client = Client()
 
@@ -52,8 +62,10 @@ def guild_create(data):
         client.redis.set('discord:channels:%s' % channel['id'], json.dumps(channel))
 
 # Commands
-me = {}
+me = None
 prefix = ''
+
+http = HTTPClient()
 
 @client.event('MESSAGE_CREATE')
 def message(data):
@@ -61,7 +73,7 @@ def message(data):
     print("%s in %s: %s" % (data['author']['username'], channel['name'], data['content']))
 
 @client.event('MESSAGE_CREATE')
-def command(data):
+async def command(data):
     global me
     global prefix
 
@@ -74,9 +86,13 @@ def command(data):
         return
 
     command = content[len(prefix):]
+    print('trying to find a command %s' % command)
 
-    if command is 'ping':
-        print('pong')
+    if command == 'ping':
+        print('sending a big pong')
+        await http.send_message(data['channel_id'], 'pong')
 
 
-client.run()
+loop = asyncio.get_event_loop()
+loop.run_until_complete(client.run())
+loop.close()

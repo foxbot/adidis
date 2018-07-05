@@ -16,10 +16,9 @@ class Client:
     async def call(self, type, data):
         if type in self.handlers:
             for h in self.handlers[type]:
+                func = h(data)
                 if asyncio.iscoroutinefunction(h):
-                    await h(data)
-                else:
-                    h(data)
+                    await func
 
     def event(self, type):
         def registerhandler(handler):
